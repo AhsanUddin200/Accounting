@@ -11,33 +11,26 @@ if ($_SESSION['role'] != 'admin') {
     exit();
 }
 
-// Calculate total income and expenses
-$income_query = "SELECT 
-    COALESCE(SUM(CASE 
-        WHEN type = 'income' THEN amount 
-        ELSE 0 
-    END), 0) as total_income,
-    COALESCE(SUM(CASE 
-        WHEN type = 'expense' THEN amount 
-        ELSE 0 
-    END), 0) as total_expenses
-FROM transactions 
-WHERE user_id = ?";
+// Set current month dates for the dashboard
+$period_start = date('Y-m-01'); // First day of current month
+$period_end = date('Y-m-t');    // Last day of current month
 
-$stmt = $conn->prepare($income_query);
-if ($stmt) {
-    $admin_id = $_SESSION['user_id'];
-    $stmt->bind_param("i", $admin_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    
-    $total_income = $row['total_income'];
-    $total_expenses = $row['total_expenses'];
-    $net_balance = $total_income - $total_expenses;
-    
-    $stmt->close();
-}
+// Calculate totals for current month only
+$totals_query = "SELECT 
+    SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as total_income,
+    SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as total_expenses
+FROM transactions 
+WHERE date BETWEEN ? AND ?";
+
+$stmt = $conn->prepare($totals_query);
+$stmt->bind_param("ss", $period_start, $period_end);
+$stmt->execute();
+$result = $stmt->get_result();
+$totals = $result->fetch_assoc();
+
+$total_income = $totals['total_income'] ?? 0;
+$total_expenses = $totals['total_expenses'] ?? 0;
+$net_balance = $total_income - $total_expenses;
 
 // Fetch total number of users
 $user_count_result = $conn->query("SELECT COUNT(*) as total_users FROM users");
@@ -229,6 +222,7 @@ log_action($conn, $_SESSION['user_id'], 'Viewed Admin Dashboard', 'Admin accesse
                         <a class="nav-link" href="manage_transactions.php">
                             <i class="fas fa-exchange-alt me-1"></i> Transactions
                         </a>
+                        
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="manage_categories.php">
@@ -241,7 +235,7 @@ log_action($conn, $_SESSION['user_id'], 'Viewed Admin Dashboard', 'Admin accesse
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="add_income.php">
+                        <a class="nav-link" href="add_transaction.php">
                             <i class="fas fa-file-alt me-1"></i> Add Income
                         </a>
                     </li>
@@ -277,32 +271,34 @@ log_action($conn, $_SESSION['user_id'], 'Viewed Admin Dashboard', 'Admin accesse
             </div>
         </div>
 
-        <!-- Stats Cards -->
+        <!-- Stats Cards with Period -->
+        <div class="period-header mb-3">
+            <h4>
+                <i class="fas fa-calendar me-2"></i>
+                Period: <?php echo date('d M Y', strtotime($period_start)) . " - " . date('d M Y', strtotime($period_end)); ?>
+            </h4>
+        </div>
+
         <div class="row mb-4">
             <div class="col-md-3 mb-3">
-                <div class="dashboard-card stat-card">
+                <div class="dashboard-card stat-card" 
+                     onclick="window.location='transaction_details.php?type=income&start_date=<?php echo $period_start; ?>&end_date=<?php echo $period_end; ?>'"
+                     style="cursor: pointer; background: linear-gradient(135deg, var(--success-color), #2ecc71)">
                     <div class="stat-icon">
-                        <i class="fas fa-users"></i>
+                        <i class="fas fa-arrow-up"></i>
                     </div>
-                    <div class="stat-value"><?php echo number_format($user_count); ?></div>
-                    <div class="stat-label">Total Users</div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="dashboard-card stat-card" style="background: linear-gradient(135deg, var(--success-color), #2ecc71)">
-                    <div class="stat-icon">
-                        <i class="fas fa-dollar-sign"></i>
-                    </div>
-                    <div class="stat-value">$<?php echo number_format($total_income, 2); ?></div>
+                    <div class="stat-value">PKR <?php echo number_format($total_income, 2); ?></div>
                     <div class="stat-label">Total Income</div>
                 </div>
             </div>
             <div class="col-md-3 mb-3">
-                <div class="dashboard-card stat-card" style="background: linear-gradient(135deg, var(--danger-color), #e74c3c)">
+            <div class="dashboard-card stat-card" 
+             onclick="window.location='transaction_details.php?type=expense&start_date=<?php echo $period_start; ?>&end_date=<?php echo $period_end; ?>'"
+             style="cursor: pointer; background: linear-gradient(135deg, var(--danger-color), #e74c3c)">
                     <div class="stat-icon">
                         <i class="fas fa-shopping-cart"></i>
                     </div>
-                    <div class="stat-value">$<?php echo number_format($total_expenses, 2); ?></div>
+                    <div class="stat-value">PKR <?php echo number_format($total_expenses, 2); ?></div>
                     <div class="stat-label">Total Expenses</div>
                 </div>
             </div>
@@ -311,8 +307,8 @@ log_action($conn, $_SESSION['user_id'], 'Viewed Admin Dashboard', 'Admin accesse
                     <div class="stat-icon">
                         <i class="fas fa-balance-scale"></i>
                     </div>
-                    <div class="stat-value">$<?php echo number_format($net_balance, 2); ?></div>
-                    <div class="stat-label">Net Balance</div>
+                    <div class="stat-value">PKR <?php echo number_format($net_balance, 2); ?></div>
+                    <div class="scounttat-label">Net Balance</div>
                 </div>
             </div>
         </div>
@@ -338,6 +334,9 @@ log_action($conn, $_SESSION['user_id'], 'Viewed Admin Dashboard', 'Admin accesse
                     </a>
                     <a href="financial_reports.php" class="quick-action-btn btn btn-warning">
                         <i class="fas fa-chart-bar me-2"></i>Financial Reports
+                    </a>
+                    <a href="accounting.php" class="quick-action-btn btn" style="background-color: #0066ff; color: white;">
+                        <i class="fas fa-book-open me-2"></i>Accounting
                     </a>
                 </div>
             </div>
@@ -395,7 +394,7 @@ log_action($conn, $_SESSION['user_id'], 'Viewed Admin Dashboard', 'Admin accesse
                             <?php foreach ($recent_incomes as $income): ?>
                             <tr>
                                 <td><?php echo htmlspecialchars($income['description']); ?></td>
-                                <td>$<?php echo number_format($income['amount'], 2); ?></td>
+                                <td>PKR <?php echo number_format($income['amount'], 2); ?></td>
                                 <td><?php echo htmlspecialchars(date('M d, Y', strtotime($income['date']))); ?></td>
                             </tr>
                             <?php endforeach; ?>

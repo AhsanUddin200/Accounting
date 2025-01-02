@@ -479,7 +479,8 @@ foreach ($transactions as $transaction) {
                                         <?php echo ucfirst($transaction['type']); ?>
                                     </span>
                                 </td>
-                                <td>$<?php echo number_format($transaction['amount'], 2); ?></td>
+                                <td>PKR <?php echo number_format($transaction['amount'], 2); ?></td>
+
                                 <td><?php echo htmlspecialchars($transaction['category']); ?></td>
                                 <td>
                                     <div class="btn-group">

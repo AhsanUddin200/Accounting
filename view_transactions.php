@@ -353,7 +353,7 @@ if (isset($_GET['delete'])) {
                                         <td><?php echo htmlspecialchars($transaction['category']); ?></td>
                                         <td class="fw-bold <?php echo $transaction['type'] == 'income' ? 'text-success' : 'text-danger'; ?>">
                                             <?php echo ($transaction['type'] == 'income' ? '+' : '-'); ?>
-                                            $<?php echo number_format($transaction['amount'], 2); ?>
+                                            PKR <?php echo number_format($transaction['amount'], 2); ?>
                                         </td>
                                         <td>
                                             <span class="badge <?php echo $transaction['type'] == 'income' ? 'badge-income' : 'badge-expense'; ?>">
