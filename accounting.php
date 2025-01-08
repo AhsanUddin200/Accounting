@@ -16,12 +16,13 @@ $heads = $conn->query($heads_query);
 $categories_query = "SELECT * FROM account_categories ORDER BY name";
 $categories = $conn->query($categories_query);
 
-// Build the query with filters
-$query = "SELECT t.*, ah.name as head_name, ac.name as category_name, u.username 
+// Just keep one query at the top
+$query = "SELECT t.*, ah.name as head_name, ac.name as category_name, u.username, l.ledger_code 
           FROM transactions t
           LEFT JOIN accounting_heads ah ON t.head_id = ah.id
           LEFT JOIN account_categories ac ON t.category_id = ac.id
           LEFT JOIN users u ON t.user_id = u.id
+          LEFT JOIN ledgers l ON t.id = l.transaction_id
           WHERE 1=1";
 
 // Add filter conditions
@@ -41,7 +42,8 @@ if (!empty($_GET['to_date'])) {
     $query .= " AND t.date <= '" . $conn->real_escape_string($_GET['to_date']) . "'";
 }
 
-$query .= " ORDER BY t.date DESC LIMIT 10";
+// Update ORDER BY to sort by date and created_at
+$query .= " ORDER BY t.date DESC, t.created_at DESC LIMIT 10";
 
 $transactions = $conn->query($query);
 
@@ -85,6 +87,7 @@ function safe_echo($str) {
                         <thead>
                             <tr>
                                 <th>Date</th>
+                                <th>Ledger Code</th>
                                 <th>Head</th>
                                 <th>Category</th>
                                 <th>Type</th>
@@ -97,6 +100,7 @@ function safe_echo($str) {
                             <?php while ($row = $transactions->fetch_assoc()): ?>
                                 <tr>
                                     <td><?php echo safe_echo($row['date']); ?></td>
+                                    <td><?php echo safe_echo($row['ledger_code']); ?></td>
                                     <td><?php echo safe_echo($row['head_name']); ?></td>
                                     <td><?php echo safe_echo($row['category_name']); ?></td>
                                     <td>
@@ -111,7 +115,7 @@ function safe_echo($str) {
                             <?php endwhile; ?>
                             <?php if ($transactions->num_rows == 0): ?>
                                 <tr>
-                                    <td colspan="7" class="text-center">No transactions found</td>
+                                    <td colspan="8" class="text-center">No transactions found</td>
                                 </tr>
                             <?php endif; ?>
                         </tbody>

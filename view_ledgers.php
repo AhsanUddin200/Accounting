@@ -3,6 +3,7 @@ require_once 'session.php';
 require_once 'db.php';
 require_once 'functions.php';
 
+
 // Calculate totals from all transactions
 $totals_query = "SELECT 
     SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as total_income,
@@ -16,23 +17,54 @@ $total_expense = $totals['total_expense'] ?? 0;
 $net_balance = $total_income - $total_expense;
 
 // Fetch ledger entries with transaction details
-$query = "SELECT 
-    l.*,
-    t.type as transaction_type,
-    t.amount as transaction_amount,
-    t.date as transaction_date,
-    t.description as transaction_description,
-    ah.name as head_name,
-    ac.name as category_name
+$where_conditions = [];
+$params = [];
+$param_types = '';
+// Add filter form before the main table
+?>
+
+
+<?php
+// Update the main query with filters
+$query = "SELECT DISTINCT
+    l.ledger_code,
+    l.date,
+    ah.name as account_type,
+    l.description,
+    l.debit,
+    l.credit,
+    l.balance
     FROM ledgers l
     LEFT JOIN transactions t ON l.transaction_id = t.id
     LEFT JOIN accounting_heads ah ON t.head_id = ah.id
-    LEFT JOIN account_categories ac ON t.category_id = ac.id
-    ORDER BY t.date DESC, l.id DESC";
+    WHERE l.ledger_code IS NOT NULL";
 
-$ledgers = $conn->query($query);
+// Add date range filter
+if (!empty($_GET['from_date'])) {
+    $query .= " AND l.date >= '" . $conn->real_escape_string($_GET['from_date']) . "'";
+}
+if (!empty($_GET['to_date'])) {
+    $query .= " AND l.date <= '" . $conn->real_escape_string($_GET['to_date']) . "'";
+}
 
-if (!$ledgers) {
+// Add ledger code range filter
+if (!empty($_GET['from_code'])) {
+    $query .= " AND l.ledger_code >= '" . $conn->real_escape_string($_GET['from_code']) . "'";
+}
+if (!empty($_GET['to_code'])) {
+    $query .= " AND l.ledger_code <= '" . $conn->real_escape_string($_GET['to_code']) . "'";
+}
+
+// Add Account Type Filter here
+if (!empty($_GET['account_type'])) {
+    $query .= " AND ah.name = '" . $conn->real_escape_string($_GET['account_type']) . "'";
+}
+
+$query .= " ORDER BY l.date DESC, l.id DESC";
+
+$result = $conn->query($query);
+
+if (!$result) {
     die("Error fetching ledger entries: " . $conn->error);
 }
 
@@ -157,7 +189,7 @@ if (!$ledgers) {
             vertical-align: middle;
             border-color: #f8f9fa;
         }
-
+    
         .account-badge {
             padding: 0.5rem 1rem;
             border-radius: 0.25rem;
@@ -187,52 +219,15 @@ if (!$ledgers) {
 </head>
 <body>
     <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
+    <nav class="navbar navbar-expand-lg mb-4" style="background: linear-gradient(90deg, #4256e4 0%, #5e3fd3 100%);">
         <div class="container-fluid">
-            <a class="navbar-brand" href="index.php">
-                <i class="fas fa-calculator me-2"></i>
-                Accounting System
+            <a class="navbar-brand text-white" href="index.php">
+                <i class="fas fa-chart-line me-2"></i>Financial Management System
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="admin_dashboard.php">
-                            <i class="fas fa-tachometer-alt"></i>Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="transactions.php">
-                            <i class="fas fa-exchange-alt"></i>Transactions
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="view_ledgers.php">
-                            <i class="fas fa-book"></i>Ledgers
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="reports.php">
-                            <i class="fas fa-chart-bar"></i>Reports
-                        </a>
-                    </li>
-                </ul>
-                <ul class="navbar-nav">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-user"></i>
-                            <?php echo htmlspecialchars($_SESSION['username'] ?? 'User'); ?>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="profile.php"><i class="fas fa-id-card me-2"></i>Profile</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="logout.php"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
+            
+            <a href="admin_dashboard.php" class="btn btn-light rounded-pill px-4">
+                <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+            </a>
         </div>
     </nav>
 
@@ -250,6 +245,83 @@ if (!$ledgers) {
             </div>
         </div>
     </div>
+
+    <div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Search Filters</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <!-- Date Range -->
+            <div class="col-md-3">
+                <label class="form-label">From Date</label>
+                <input type="date" name="from_date" class="form-control" 
+                    value="<?php echo $_GET['from_date'] ?? ''; ?>">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">To Date</label>
+                <input type="date" name="to_date" class="form-control" 
+                    value="<?php echo $_GET['to_date'] ?? ''; ?>">
+            </div>
+
+            <!-- Ledger Code Range -->
+            <div class="col-md-3">
+                <label class="form-label">From Ledger Code</label>
+                <input type="text" name="from_code" class="form-control" 
+                    value="<?php echo $_GET['from_code'] ?? ''; ?>"
+                    placeholder="e.g., IN0001">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">To Ledger Code</label>
+                <input type="text" name="to_code" class="form-control" 
+                    value="<?php echo $_GET['to_code'] ?? ''; ?>"
+                    placeholder="e.g., IN9999">
+            </div>
+
+            <!-- Add Account Type Filter here -->
+            <div class="col-md-3">
+                <label class="form-label">Account Type</label>
+                <select name="account_type" class="form-select">
+                    <option value="">All Account Types</option>
+                    <option value="Assets" <?php echo ($_GET['account_type'] ?? '') === 'Assets' ? 'selected' : ''; ?>>Assets</option>
+                    <option value="Liabilities" <?php echo ($_GET['account_type'] ?? '') === 'Liabilities' ? 'selected' : ''; ?>>Liabilities</option>
+                    <option value="Equities" <?php echo ($_GET['account_type'] ?? '') === 'Equities' ? 'selected' : ''; ?>>Equities</option>
+                    <option value="Income" <?php echo ($_GET['account_type'] ?? '') === 'Income' ? 'selected' : ''; ?>>Income</option>
+                    <option value="Expenses" <?php echo ($_GET['account_type'] ?? '') === 'Expenses' ? 'selected' : ''; ?>>Expenses</option>
+                </select>
+            </div>
+<!-- Add this to your search form -->
+<div class="col-md-3">
+    <label class="form-label">Document Number</label>
+    <input type="text" name="search_term" class="form-control" 
+        value="<?php echo $_GET['search_term'] ?? ''; ?>"
+        placeholder="Search in any column...">
+</div>
+
+<?php
+// Add this to your query conditions
+if (!empty($_GET['search_term'])) {
+    $search = $conn->real_escape_string($_GET['search_term']);
+    $query .= " AND (
+        l.ledger_code LIKE '%$search%' OR 
+        l.description LIKE '%$search%' OR 
+        ah.name LIKE '%$search%' OR 
+        l.document_number LIKE '%$search%'
+    )";
+}
+?>
+            <!-- Submit and Reset Buttons -->
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search me-2"></i>Search
+                </button>
+                <a href="view_ledgers.php" class="btn btn-secondary">
+                    <i class="fas fa-undo me-2"></i>Reset
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
 
     <!-- Main Content -->
     <div class="container-fluid">
@@ -290,56 +362,25 @@ if (!$ledgers) {
                 <table class="table">
                     <thead>
                         <tr>
-                            <th>Date</th>
-                            <th>Account Type</th>
-                            <th>Description</th>
-                            <th class="text-end">Debit (PKR)</th>
-                            <th class="text-end">Credit (PKR)</th>
-                            <th class="text-end">Balance (PKR)</th>
+                            <th>LEDGER CODE</th>
+                            <th>DATE</th>
+                            <th>ACCOUNT TYPE</th>
+                            <th>DESCRIPTION</th>
+                            <th class="text-end">DEBIT (PKR)</th>
+                            <th class="text-end">CREDIT (PKR)</th>
+                            <th class="text-end">BALANCE (PKR)</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php 
-                        $running_balance = 0;
-                        while($entry = $ledgers->fetch_assoc()): 
-                            // Update running balance
-                            $running_balance += ($entry['debit'] - $entry['credit']);
-                        ?>
+                        <?php while($row = $result->fetch_assoc()): ?>
                             <tr>
-                                <td><?php echo date('d M Y H:i', strtotime($entry['transaction_date'])); ?></td>
-                                <td>
-                                    <span class="account-badge <?php echo strtolower($entry['account_type']); ?>">
-                                        <?php echo ucfirst($entry['account_type']); ?>
-                                    </span>
-                                </td>
-                                <td>
-                                    <strong><?php echo htmlspecialchars($entry['head_name']); ?></strong><br>
-                                    <small class="text-muted">
-                                        <?php echo htmlspecialchars($entry['category_name']); ?> - 
-                                        <?php echo htmlspecialchars($entry['transaction_description']); ?>
-                                    </small>
-                                </td>
-                                <td class="text-end">
-                                    <?php if ($entry['debit'] > 0): ?>
-                                        <span class="amount-positive">
-                                            <?php echo formatCurrency($entry['debit']); ?>
-                                        </span>
-                                    <?php else: ?>
-                                        -
-                                    <?php endif; ?>
-                                </td>
-                                <td class="text-end">
-                                    <?php if ($entry['credit'] > 0): ?>
-                                        <span class="amount-negative">
-                                            <?php echo formatCurrency($entry['credit']); ?>
-                                        </span>
-                                    <?php else: ?>
-                                        -
-                                    <?php endif; ?>
-                                </td>
-                                <td class="text-end fw-bold <?php echo $running_balance >= 0 ? 'amount-positive' : 'amount-negative'; ?>">
-                                    <?php echo formatCurrency($running_balance); ?>
-                                </td>
+                                <td><?php echo htmlspecialchars($row['ledger_code'] ?? 'N/A'); ?></td>
+                                <td><?php echo date('d M Y H:i', strtotime($row['date'])); ?></td>
+                                <td><?php echo htmlspecialchars($row['account_type']); ?></td>
+                                <td><?php echo htmlspecialchars($row['description']); ?></td>
+                                <td class="text-end"><?php echo $row['debit'] ? 'PKR ' . number_format($row['debit'], 2) : '-'; ?></td>
+                                <td class="text-end"><?php echo $row['credit'] ? 'PKR ' . number_format($row['credit'], 2) : '-'; ?></td>
+                                <td class="text-end">PKR <?php echo number_format($row['balance'], 2); ?></td>
                             </tr>
                         <?php endwhile; ?>
                     </tbody>

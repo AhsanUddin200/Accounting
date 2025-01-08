@@ -60,6 +60,81 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             throw new Exception("Error inserting ledger entry: " . $stmt->error);
         }
 
+        // Get head type from accounting_heads
+        $head_type_query = "SELECT name FROM accounting_heads WHERE id = ?";
+        $stmt = $conn->prepare($head_type_query);
+        $stmt->bind_param("i", $head_id);
+        $stmt->execute();
+        $head_result = $stmt->get_result();
+        $head_type = $head_result->fetch_assoc()['name'];
+
+        // Generate ledger code
+        $prefix = '';
+        switch($head_type) {
+            case 'Assets':
+                $prefix = 'AS';
+                break;
+            case 'Liabilities':
+                $prefix = 'LB';
+                break;
+            case 'Equities':
+                $prefix = 'EQ';
+                break;
+            case 'Income':
+                $prefix = 'IN';
+                break;
+            case 'Expenses':
+                $prefix = 'EX';
+                break;
+            default:
+                $prefix = 'UN';
+        }
+
+        // Get last code for this prefix
+        $last_code_query = "SELECT ledger_code 
+                           FROM ledgers 
+                           WHERE ledger_code LIKE '$prefix%' 
+                           ORDER BY ledger_code DESC 
+                           LIMIT 1";
+        $result = $conn->query($last_code_query);
+
+        if ($result && $result->num_rows > 0) {
+            $last_code = $result->fetch_assoc()['ledger_code'];
+            $number = intval(substr($last_code, 2)) + 1;
+        } else {
+            $number = 1;
+        }
+
+        $ledger_code = $prefix . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        // Insert into ledgers with the generated code
+        $ledger_query = "INSERT INTO ledgers (
+            ledger_code,
+            transaction_id, 
+            account_type, 
+            debit, 
+            credit, 
+            balance, 
+            description, 
+            date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
+        $stmt = $conn->prepare($ledger_query);
+        $stmt->bind_param("sisddiss", 
+            $ledger_code,
+            $transaction_id,
+            $head_type,
+            $debit,
+            $credit,
+            $balance,
+            $description,
+            $date
+        );
+
+        if (!$stmt->execute()) {
+            throw new Exception("Error inserting ledger entry: " . $stmt->error);
+        }
+
         // Commit transaction
         $conn->commit();
         
@@ -77,6 +152,43 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 // Fetch accounting heads in specific order
 $heads_query = "SELECT * FROM accounting_heads ORDER BY FIELD(name, 'Assets', 'Liabilities', 'Equities', 'Income', 'Expenses')";
 $heads = $conn->query($heads_query);
+
+function generateLedgerCode($head_id, $conn) {
+    // Get the head prefix (e.g., AS for Assets, EX for Expenses)
+    $prefix_query = "SELECT 
+        CASE 
+            WHEN name = 'Assets' THEN 'AS'
+            WHEN name = 'Liabilities' THEN 'LB'
+            WHEN name = 'Equities' THEN 'EQ'
+            WHEN name = 'Income' THEN 'IN'
+            WHEN name = 'Expenses' THEN 'EX'
+        END as prefix
+        FROM accounting_heads WHERE id = ?";
+    
+    $stmt = $conn->prepare($prefix_query);
+    $stmt->bind_param("i", $head_id);
+    $stmt->execute();
+    $prefix_result = $stmt->get_result();
+    $prefix = $prefix_result->fetch_assoc()['prefix'];
+
+    // Get the last number used for this prefix
+    $last_code_query = "SELECT ledger_code 
+                       FROM ledgers 
+                       WHERE ledger_code LIKE '$prefix%' 
+                       ORDER BY ledger_code DESC 
+                       LIMIT 1";
+    $result = $conn->query($last_code_query);
+    
+    if ($result->num_rows > 0) {
+        $last_code = $result->fetch_assoc()['ledger_code'];
+        $number = intval(substr($last_code, 2)) + 1;
+    } else {
+        $number = 1;
+    }
+
+    // Generate new code (e.g., AS0001)
+    return $prefix . str_pad($number, 4, '0', STR_PAD_LEFT);
+}
 ?>
 
 <!DOCTYPE html>
@@ -109,11 +221,31 @@ $heads = $conn->query($heads_query);
                         <label>Accounting Head</label>
                         <select name="head_id" id="head_id" class="form-select" required>
                             <option value="">Select Head</option>
-                            <?php while($head = $heads->fetch_assoc()): ?>
+                            <?php foreach($heads as $head): ?>
                                 <option value="<?php echo $head['id']; ?>">
-                                    <?php echo htmlspecialchars($head['name']); ?>
+                                    <?php 
+                                    $type = '';
+                                    switch($head['name']) {
+                                        case 'Assets':
+                                           
+                                            break;
+                                        case 'Liabilities':
+                                           
+                                            break;
+                                        case 'Equities':
+                                          
+                                            break;
+                                        case 'Income':
+                                           
+                                            break;
+                                        case 'Expenses':
+                                           
+                                            break;
+                                    }
+                                    echo htmlspecialchars($head['name']) . ' ' . $type; 
+                                    ?>
                                 </option>
-                            <?php endwhile; ?>
+                            <?php endforeach; ?>
                         </select>
                     </div>
 
@@ -124,7 +256,7 @@ $heads = $conn->query($heads_query);
                     </div>
 
                     <!-- Category -->
-                    <div class="form-group">
+                    <div class="form-group">    
                         <label>Category</label>
                         <select name="category_id" id="category_id" class="form-select" required>
                             <option value="">Select Head First</option>

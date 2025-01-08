@@ -236,7 +236,7 @@ log_action($conn, $_SESSION['user_id'], 'Viewed Admin Dashboard', 'Admin accesse
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="add_transaction.php">
-                            <i class="fas fa-file-alt me-1"></i> Add Income
+                            <i class="fas fa-plus me-1"></i>  Add New Transaction
                         </a>
                     </li>
                     <li class="nav-item">
@@ -244,6 +244,11 @@ log_action($conn, $_SESSION['user_id'], 'Viewed Admin Dashboard', 'Admin accesse
                             <i class="fas fa-money-bill-wave me-1"></i> Salaries
                         </a>
                     </li>
+                    <li class="nav-item">
+                    <a class="nav-link" href="view_ledgers.php">
+                        <i class="fas fa-book"></i> View Ledgers
+                    </a>
+                </li>
                     <li class="nav-item">
                         <a class="nav-link" href="upload_attendance.php">
                             <i class="fas fa-clock me-1"></i> Upload Attendance
