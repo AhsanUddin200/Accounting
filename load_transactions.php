@@ -14,7 +14,12 @@ $end_date = $_GET['end_date'] ?? date('Y-m-t');
 $query = "SELECT t.*, 
           ah.name as head_name, 
           ac.name as category_name, 
-          u.username 
+          u.username,
+          CASE 
+              WHEN t.contra_ref IS NOT NULL THEN 'Contra Entry'
+              WHEN EXISTS(SELECT 1 FROM transactions WHERE contra_ref = t.id) THEN 'Reversed'
+              ELSE 'Original'
+          END as entry_status
           FROM transactions t
           LEFT JOIN accounting_heads ah ON t.head_id = ah.id
           LEFT JOIN account_categories ac ON t.category_id = ac.id
@@ -50,6 +55,7 @@ $total = 0;
                         <th>Category</th>
                         <th>Amount</th>
                         <th>Description</th>
+                        <th>Status</th>
                         <th>Added By</th>
                         <th>Actions</th>
                     </tr>
@@ -65,21 +71,59 @@ $total = 0;
                             <td><?php echo htmlspecialchars($row['category_name']); ?></td>
                             <td class="amount-cell">PKR <?php echo number_format($row['amount'], 2); ?></td>
                             <td><?php echo htmlspecialchars($row['description']); ?></td>
+                            <td>
+                                <?php if($row['entry_status'] == 'Contra Entry'): ?>
+                                    <span class="badge bg-warning">Contra Entry</span>
+                                <?php elseif($row['entry_status'] == 'Reversed'): ?>
+                                    <span class="badge bg-secondary">Reversed</span>
+                                <?php else: ?>
+                                    <span class="badge bg-success">Original</span>
+                                <?php endif; ?>
+                            </td>
                             <td><?php echo htmlspecialchars($row['username']); ?></td>
                             <td>
                                 <a href="edit_transaction.php?id=<?php echo $row['id']; ?>" 
                                    class="btn btn-sm btn-primary">
                                     <i class="fas fa-edit"></i>
                                 </a>
+                                <?php if($row['entry_status'] == 'Original'): ?>
+                                    <a href="create_contra_entry.php?id=<?php echo $row['id']; ?>" 
+                                       class="btn btn-warning btn-sm"
+                                       onclick="return confirm('Create contra entry for this transaction?');">
+                                        <i class="fas fa-exchange-alt"></i>
+                                    </a>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endwhile; ?>
                 </tbody>
                 <tfoot>
                     <tr class="table-dark">
-                        <td colspan="3" class="text-end"><strong>Total:</strong></td>
-                        <td colspan="4" class="amount-cell">
-                            <strong>PKR <?php echo number_format($total, 2); ?></strong>
+                        <td colspan="6" class="text-center">
+                            <div class="d-flex justify-content-center gap-4">
+                                <?php
+                                // Reset the result pointer first
+                                mysqli_data_seek($transactions, 0);
+                                
+                                $original_total = 0;
+                                $contra_total = 0;
+
+                                // Calculate totals while iterating through results
+                                while ($row = $transactions->fetch_assoc()) {
+                                    if ($row['entry_status'] == 'Original') {
+                                        $original_total += $row['amount'];
+                                    } elseif ($row['entry_status'] == 'Contra Entry') {
+                                        $contra_total += $row['amount'];
+                                    }
+                                }
+
+                                // Reset pointer again for main table loop
+                                mysqli_data_seek($transactions, 0);
+                                ?>
+                                <div>Original Total: PKR <?php echo number_format($original_total, 2); ?></div>
+                                <div>Contra Total: PKR <?php echo number_format($contra_total, 2); ?></div>
+                                <div><strong>Net Total: PKR <?php echo number_format($original_total - $contra_total, 2); ?></strong></div>
+                            </div>
                         </td>
                     </tr>
                 </tfoot>

@@ -28,25 +28,6 @@ if ($cat_result) {
     }
 }
 
-// Handle Delete Transaction
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_transaction'])) {
-    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
-        $error = "Invalid CSRF token.";
-    } else {
-        $delete_id = intval($_POST['transaction_id']);
-        $stmt = $conn->prepare("DELETE FROM transactions WHERE id = ?");
-        if ($stmt) {
-            $stmt->bind_param("i", $delete_id);
-            if ($stmt->execute()) {
-                $success = "Transaction deleted successfully.";
-            } else {
-                $error = "Error deleting transaction.";
-            }
-            $stmt->close();
-        }
-    }
-}
-
 // Build the query with filters
 $where_clauses = [];
 $params = [];
@@ -485,20 +466,15 @@ foreach ($transactions as $transaction) {
                                 <td>
                                     <div class="btn-group">
                                         <a href="edit_transaction.php?id=<?php echo $transaction['id']; ?>" 
-                                           class="btn btn-primary btn-action me-2">
+                                           class="btn btn-primary btn-action me-2" title="Edit">
                                             <i class="fas fa-edit"></i>
                                         </a>
-                                        <form method="POST" class="d-inline">
-                                            <input type="hidden" name="csrf_token" 
-                                                   value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
-                                            <input type="hidden" name="transaction_id" 
-                                                   value="<?php echo $transaction['id']; ?>">
-                                            <button type="submit" name="delete_transaction" 
-                                                    class="btn btn-danger btn-action" 
-                                                    onclick="return confirm('Are you sure you want to delete this transaction?');">
-                                                <i class="fas fa-trash"></i>
-                                            </button>
-                                        </form>
+                                        <a href="create_contra_entry.php?id=<?php echo $transaction['id']; ?>" 
+                                           class="btn btn-warning btn-action"
+                                           onclick="return confirm('Are you sure you want to create a contra (reversing) entry for this transaction?');"
+                                           title="Create Contra Entry">
+                                            <i class="fas fa-exchange-alt"></i>
+                                        </a>
                                     </div>
                                 </td>
                             </tr>

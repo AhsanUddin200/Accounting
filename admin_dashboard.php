@@ -15,22 +15,40 @@ if ($_SESSION['role'] != 'admin') {
 $period_start = date('Y-m-01'); // First day of current month
 $period_end = date('Y-m-t');    // Last day of current month
 
-// Calculate totals for current month only
-$totals_query = "SELECT 
-    SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as total_income,
-    SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as total_expenses
-FROM transactions 
-WHERE date BETWEEN ? AND ?";
+// Get the current month's start and end dates
+$start_date = date('Y-m-01');
+$end_date = date('Y-m-t');
 
-$stmt = $conn->prepare($totals_query);
-$stmt->bind_param("ss", $period_start, $period_end);
+// Query for income total (excluding contra entries)
+$income_query = "SELECT 
+    SUM(amount) as total_amount
+    FROM transactions 
+    WHERE type = 'income' 
+    AND date BETWEEN ? AND ?
+    AND contra_ref IS NULL";  // This ensures we only get original entries
+
+$stmt = $conn->prepare($income_query);
+$stmt->bind_param("ss", $start_date, $end_date);
 $stmt->execute();
-$result = $stmt->get_result();
-$totals = $result->fetch_assoc();
+$income_result = $stmt->get_result();
+$income_total = $income_result->fetch_assoc()['total_amount'] ?? 0;
 
-$total_income = $totals['total_income'] ?? 0;
-$total_expenses = $totals['total_expenses'] ?? 0;
-$net_balance = $total_income - $total_expenses;
+// Query for expense total (excluding contra entries)
+$expense_query = "SELECT 
+    SUM(amount) as total_amount
+    FROM transactions 
+    WHERE type = 'expense' 
+    AND date BETWEEN ? AND ?
+    AND contra_ref IS NULL";  // This ensures we only get original entries
+
+$stmt = $conn->prepare($expense_query);
+$stmt->bind_param("ss", $start_date, $end_date);
+$stmt->execute();
+$expense_result = $stmt->get_result();
+$expense_total = $expense_result->fetch_assoc()['total_amount'] ?? 0;
+
+// Calculate net balance
+$net_balance = $income_total - $expense_total;
 
 // Fetch total number of users
 $user_count_result = $conn->query("SELECT COUNT(*) as total_users FROM users");
@@ -292,7 +310,7 @@ log_action($conn, $_SESSION['user_id'], 'Viewed Admin Dashboard', 'Admin accesse
                     <div class="stat-icon">
                         <i class="fas fa-arrow-up"></i>
                     </div>
-                    <div class="stat-value">PKR <?php echo number_format($total_income, 2); ?></div>
+                    <div class="stat-value">PKR <?php echo number_format($income_total, 2); ?></div>
                     <div class="stat-label">Total Income</div>
                 </div>
             </div>
@@ -303,7 +321,7 @@ log_action($conn, $_SESSION['user_id'], 'Viewed Admin Dashboard', 'Admin accesse
                     <div class="stat-icon">
                         <i class="fas fa-shopping-cart"></i>
                     </div>
-                    <div class="stat-value">PKR <?php echo number_format($total_expenses, 2); ?></div>
+                    <div class="stat-value">PKR <?php echo number_format($expense_total, 2); ?></div>
                     <div class="stat-label">Total Expenses</div>
                 </div>
             </div>
@@ -449,7 +467,7 @@ log_action($conn, $_SESSION['user_id'], 'Viewed Admin Dashboard', 'Admin accesse
                                 <span>Income to Expense Ratio</span>
                                 <span class="badge bg-info">
                                     <?php 
-                                    $ratio = $total_expenses > 0 ? ($total_income / $total_expenses) : 0;
+                                    $ratio = $expense_total > 0 ? ($income_total / $expense_total) : 0;
                                     echo number_format($ratio, 2);
                                     ?>
                                 </span>
@@ -463,7 +481,7 @@ log_action($conn, $_SESSION['user_id'], 'Viewed Admin Dashboard', 'Admin accesse
                                 <span>Budget Utilization</span>
                                 <span class="badge bg-warning">
                                     <?php 
-                                    $utilization = $total_income > 0 ? ($total_expenses / $total_income * 100) : 0;
+                                    $utilization = $income_total > 0 ? ($expense_total / $income_total * 100) : 0;
                                     echo number_format($utilization, 1) . '%';
                                     ?>
                                 </span>

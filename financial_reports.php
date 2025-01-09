@@ -313,6 +313,26 @@ if ($_SESSION['role'] == 'admin') {
                 margin-bottom: 0.5rem;
             }
         }
+
+        .financial-section {
+            margin-bottom: 3rem;
+        }
+        .report-card {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        .report-card:hover {
+            transform: translateY(-5px);
+        }
+        .report-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: #4361ee;
+        }
     </style>
 </head>
 <body>
@@ -332,6 +352,60 @@ if ($_SESSION['role'] == 'admin') {
     </nav>
 
     <div class="container mt-4">
+        <!-- New Financial Reports Section -->
+        <div class="financial-section">
+            <h2 class="mb-4">Financial Reports</h2>
+            <div class="row">
+                <!-- Ledgers -->
+                <div class="col-md-6 mb-4">
+                    <div class="report-card text-center">
+                        <div class="report-icon">
+                            <i class="fas fa-book"></i>
+                        </div>
+                        <h4>Ledgers</h4>
+                        <p>View and manage detailed ledger entries for all accounts</p>
+                        <a href="view_ledgers.php" class="btn btn-primary">View Ledgers</a>
+                    </div>
+                </div>
+
+                <!-- Trial Balance -->
+                <div class="col-md-6 mb-4">
+                    <div class="report-card text-center">
+                        <div class="report-icon">
+                            <i class="fas fa-balance-scale"></i>
+                        </div>
+                        <h4>Trial Balance</h4>
+                        <p>View the trial balance report showing debits and credits</p>
+                        <a href="trial_balance.php" class="btn btn-primary">View Trial Balance</a>
+                    </div>
+                </div>
+
+                <!-- Income Statement -->
+                <div class="col-md-6 mb-4">
+                    <div class="report-card text-center">
+                        <div class="report-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <h4>Income Statement</h4>
+                        <p>View profit and loss statement for selected periods</p>
+                        <a href="income_statement.php" class="btn btn-primary">View Income Statement</a>
+                    </div>
+                </div>
+
+                <!-- Balance Sheet -->
+                <div class="col-md-6 mb-4">
+                    <div class="report-card text-center">
+                        <div class="report-icon">
+                            <i class="fas fa-file-invoice-dollar"></i>
+                        </div>
+                        <h4>Balance Sheet</h4>
+                        <p>View assets, liabilities, and equity statement</p>
+                        <a href="balance_sheet.php" class="btn btn-primary">View Balance Sheet</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Display Success or Error Messages -->
         <?php if (!empty($error)): ?>
             <div class="alert alert-danger alert-dismissible fade show" role="alert">

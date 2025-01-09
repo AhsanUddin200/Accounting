@@ -16,8 +16,9 @@ $heads = $conn->query($heads_query);
 $categories_query = "SELECT * FROM account_categories ORDER BY name";
 $categories = $conn->query($categories_query);
 
-// Just keep one query at the top
-$query = "SELECT t.*, ah.name as head_name, ac.name as category_name, u.username, l.ledger_code 
+// Update the query to prevent duplicates
+$query = "SELECT DISTINCT t.id, t.date, l.ledger_code, ah.name as head_name, 
+          ac.name as category_name, t.type, t.amount, t.description, u.username 
           FROM transactions t
           LEFT JOIN accounting_heads ah ON t.head_id = ah.id
           LEFT JOIN account_categories ac ON t.category_id = ac.id
@@ -42,8 +43,8 @@ if (!empty($_GET['to_date'])) {
     $query .= " AND t.date <= '" . $conn->real_escape_string($_GET['to_date']) . "'";
 }
 
-// Update ORDER BY to sort by date and created_at
-$query .= " ORDER BY t.date DESC, t.created_at DESC LIMIT 10";
+// Group by transaction ID to prevent duplicates
+$query .= " GROUP BY t.id ORDER BY t.date DESC, t.created_at DESC LIMIT 10";
 
 $transactions = $conn->query($query);
 

@@ -55,7 +55,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'GET') {
 }
 
 // Build the query
-$query = "SELECT transactions.id, transactions.amount, transactions.type, categories.name AS category, transactions.date, transactions.description
+$query = "SELECT transactions.id, transactions.amount, transactions.type, categories.name AS category, transactions.date, transactions.description,
+          CASE
+              WHEN transactions.contra_ref IS NOT NULL THEN 'Reversed'
+              WHEN EXISTS(SELECT 1 FROM transactions WHERE contra_ref = transactions.id) THEN 'Reversed'
+              ELSE 'Active'
+          END as status
           FROM transactions
           JOIN categories ON transactions.category_id = categories.id
           WHERE " . implode(" AND ", $where_clauses) . "
@@ -339,6 +344,7 @@ if (isset($_GET['delete'])) {
                                     <th>Category</th>
                                     <th>Amount</th>
                                     <th>Type</th>
+                                    <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -361,15 +367,24 @@ if (isset($_GET['delete'])) {
                                             </span>
                                         </td>
                                         <td>
-                                            <a href="edit_transaction.php?id=<?php echo $transaction['id']; ?>" 
-                                               class="btn btn-primary btn-action me-1">
-                                                <i class="fas fa-edit"></i>
-                                            </a>
-                                            <a href="view_transactions.php?delete=<?php echo $transaction['id']; ?>" 
-                                               class="btn btn-danger btn-action"
-                                               onclick="return confirm('Are you sure you want to delete this transaction?');">
-                                                <i class="fas fa-trash"></i>
-                                            </a>
+                                            <?php if($transaction['status'] == 'Reversed'): ?>
+                                                <span class="badge bg-warning">Reversed</span>
+                                            <?php else: ?>
+                                                <span class="badge bg-success">Active</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group">
+                                                <a href="edit_transaction.php?id=<?php echo $transaction['id']; ?>" 
+                                                   class="btn btn-sm btn-primary">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+                                                <a href="create_contra_entry.php?id=<?php echo $transaction['id']; ?>" 
+                                                   class="btn btn-sm btn-warning"
+                                                   onclick="return confirm('Are you sure you want to create a contra (reversing) entry for this transaction?');">
+                                                    <i class="fas fa-exchange-alt"></i> Contra Entry
+                                                </a>
+                                            </div>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
