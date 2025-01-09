@@ -17,26 +17,39 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $description = $_POST['description'] ?? '';
     $user_id = $_SESSION['user_id'];
 
-    // Get head type from accounting_heads
-    $head_query = "SELECT type FROM accounting_heads WHERE id = ?";
+    // Get head name and type from accounting_heads
+    $head_query = "SELECT name, type FROM accounting_heads WHERE id = ?";
     $stmt = $conn->prepare($head_query);
     $stmt->bind_param("i", $head_id);
     $stmt->execute();
-    $head_result = $stmt->get_result();
-    $head_data = $head_result->fetch_assoc();
-    
-    // Determine transaction type based on head type
-    $type = ($head_data['type'] == 'income') ? 'income' : 'expense';
+    $result = $stmt->get_result();
+    $head_data = $result->fetch_assoc();
+
+    // Set transaction type based on accounting head type
+    $transaction_type = '';
+    if ($head_data['type'] == 'credit') {
+        $transaction_type = 'income';  // For Income, Liabilities, and Equities (credit type)
+    } else if ($head_data['type'] == 'debit') {
+        $transaction_type = 'expense'; // For Expenses and Assets (debit type)
+    }
 
     try {
         // Start transaction
         $conn->begin_transaction();
 
         // Insert into transactions table
-        $query = "INSERT INTO transactions (user_id, type, amount, head_id, category_id, description, date) 
+        $query = "INSERT INTO transactions (user_id, head_id, category_id, amount, type, date, description) 
                  VALUES (?, ?, ?, ?, ?, ?, ?)";
         $stmt = $conn->prepare($query);
-        $stmt->bind_param("isdiiss", $user_id, $type, $amount, $head_id, $category_id, $description, $date);
+        $stmt->bind_param("iiidsss", 
+            $_SESSION['user_id'],
+            $head_id,
+            $category_id,
+            $amount,
+            $transaction_type,
+            $date,
+            $description
+        );
         
         if (!$stmt->execute()) {
             throw new Exception("Error inserting transaction: " . $stmt->error);
@@ -50,8 +63,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $stmt = $conn->prepare($ledger_query);
         
         // Set debit/credit based on transaction type
-        $debit = ($type == 'expense') ? $amount : 0;
-        $credit = ($type == 'income') ? $amount : 0;
+        $debit = ($transaction_type == 'expense') ? $amount : 0;
+        $credit = ($transaction_type == 'income') ? $amount : 0;
         $balance = $credit - $debit;
         
         $stmt->bind_param("isddiss", $transaction_id, $head_data['type'], $debit, $credit, $balance, $description, $date);
@@ -293,7 +306,7 @@ function generateLedgerCode($head_id, $conn) {
     <script>
         $(document).ready(function() {
             // When accounting head changes
-            $('#head_id').change(function() {
+            $('#head_id').change(function() {~
                 var head_id = $(this).val();
                 
                 if (head_id) {
