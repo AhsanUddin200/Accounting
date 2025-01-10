@@ -10,142 +10,79 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
 
 // Process form submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $head_id = $_POST['head_id'] ?? '';
-    $amount = $_POST['amount'] ?? '';
-    $category_id = $_POST['category_id'] ?? '';
+    $debit_head_id = $_POST['debit_head_id'] ?? '';
+    $debit_category_id = $_POST['debit_category_id'] ?? '';
+    $debit_amount = $_POST['debit_amount'] ?? '';
+    $credit_head_id = $_POST['credit_head_id'] ?? '';
+    $credit_category_id = $_POST['credit_category_id'] ?? '';
+    $credit_amount = $_POST['credit_amount'] ?? '';
     $date = $_POST['date'] ?? '';
     $description = $_POST['description'] ?? '';
     $user_id = $_SESSION['user_id'];
-
-    // Get head name and type from accounting_heads
-    $head_query = "SELECT name, type FROM accounting_heads WHERE id = ?";
-    $stmt = $conn->prepare($head_query);
-    $stmt->bind_param("i", $head_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $head_data = $result->fetch_assoc();
-
-    // Set transaction type based on accounting head type
-    $transaction_type = '';
-    if ($head_data['type'] == 'credit') {
-        $transaction_type = 'income';  // For Income, Liabilities, and Equities (credit type)
-    } else if ($head_data['type'] == 'debit') {
-        $transaction_type = 'expense'; // For Expenses and Assets (debit type)
-    }
 
     try {
         // Start transaction
         $conn->begin_transaction();
 
-        // Insert into transactions table
+        // Get head names for type determination
+        $head_query = "SELECT id, name FROM accounting_heads WHERE id IN (?, ?)";
+        $stmt = $conn->prepare($head_query);
+        $stmt->bind_param("ii", $debit_head_id, $credit_head_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $heads = [];
+        while($row = $result->fetch_assoc()) {
+            $heads[$row['id']] = $row['name'];
+        }
+
+        // Insert debit transaction
         $query = "INSERT INTO transactions (user_id, head_id, category_id, amount, type, date, description) 
                  VALUES (?, ?, ?, ?, ?, ?, ?)";
         $stmt = $conn->prepare($query);
+        
+        // Set type based on head for debit entry
+        $debit_type = 'expense'; // Default for Assets and Expenses
+        if (in_array($heads[$debit_head_id], ['Liabilities', 'Equities', 'Income'])) {
+            $debit_type = 'income';
+        }
+        
         $stmt->bind_param("iiidsss", 
-            $_SESSION['user_id'],
-            $head_id,
-            $category_id,
-            $amount,
-            $transaction_type,
+            $user_id,
+            $debit_head_id,
+            $debit_category_id,
+            $debit_amount,
+            $debit_type,
             $date,
             $description
         );
         
         if (!$stmt->execute()) {
-            throw new Exception("Error inserting transaction: " . $stmt->error);
+            throw new Exception("Error inserting debit transaction: " . $stmt->error);
         }
 
-        $transaction_id = $conn->insert_id;
-
-        // Insert into ledgers table
-        $ledger_query = "INSERT INTO ledgers (transaction_id, account_type, debit, credit, balance, description, date) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?)";
-        $stmt = $conn->prepare($ledger_query);
+        // Insert credit transaction
+        $query = "INSERT INTO transactions (user_id, head_id, category_id, amount, type, date, description) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?)";
+        $stmt = $conn->prepare($query);
         
-        // Set debit/credit based on transaction type
-        $debit = ($transaction_type == 'expense') ? $amount : 0;
-        $credit = ($transaction_type == 'income') ? $amount : 0;
-        $balance = $credit - $debit;
+        // Set type based on head for credit entry
+        $credit_type = 'expense'; // Default for Assets and Expenses
+        if (in_array($heads[$credit_head_id], ['Liabilities', 'Equities', 'Income'])) {
+            $credit_type = 'income';
+        }
         
-        $stmt->bind_param("isddiss", $transaction_id, $head_data['type'], $debit, $credit, $balance, $description, $date);
-        
-        if (!$stmt->execute()) {
-            throw new Exception("Error inserting ledger entry: " . $stmt->error);
-        }
-
-        // Get head type from accounting_heads
-        $head_type_query = "SELECT name FROM accounting_heads WHERE id = ?";
-        $stmt = $conn->prepare($head_type_query);
-        $stmt->bind_param("i", $head_id);
-        $stmt->execute();
-        $head_result = $stmt->get_result();
-        $head_type = $head_result->fetch_assoc()['name'];
-
-        // Generate ledger code
-        $prefix = '';
-        switch($head_type) {
-            case 'Assets':
-                $prefix = 'AS';
-                break;
-            case 'Liabilities':
-                $prefix = 'LB';
-                break;
-            case 'Equities':
-                $prefix = 'EQ';
-                break;
-            case 'Income':
-                $prefix = 'IN';
-                break;
-            case 'Expenses':
-                $prefix = 'EX';
-                break;
-            default:
-                $prefix = 'UN';
-        }
-
-        // Get last code for this prefix
-        $last_code_query = "SELECT ledger_code 
-                           FROM ledgers 
-                           WHERE ledger_code LIKE '$prefix%' 
-                           ORDER BY ledger_code DESC 
-                           LIMIT 1";
-        $result = $conn->query($last_code_query);
-
-        if ($result && $result->num_rows > 0) {
-            $last_code = $result->fetch_assoc()['ledger_code'];
-            $number = intval(substr($last_code, 2)) + 1;
-        } else {
-            $number = 1;
-        }
-
-        $ledger_code = $prefix . str_pad($number, 4, '0', STR_PAD_LEFT);
-
-        // Insert into ledgers with the generated code
-        $ledger_query = "INSERT INTO ledgers (
-            ledger_code,
-            transaction_id, 
-            account_type, 
-            debit, 
-            credit, 
-            balance, 
-            description, 
-            date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-
-        $stmt = $conn->prepare($ledger_query);
-        $stmt->bind_param("sisddiss", 
-            $ledger_code,
-            $transaction_id,
-            $head_type,
-            $debit,
-            $credit,
-            $balance,
-            $description,
-            $date
+        $stmt->bind_param("iiidsss", 
+            $user_id,
+            $credit_head_id,
+            $credit_category_id,
+            $credit_amount,
+            $credit_type,
+            $date,
+            $description
         );
-
+        
         if (!$stmt->execute()) {
-            throw new Exception("Error inserting ledger entry: " . $stmt->error);
+            throw new Exception("Error inserting credit transaction: " . $stmt->error);
         }
 
         // Commit transaction
@@ -229,67 +166,88 @@ function generateLedgerCode($head_id, $conn) {
             </div>
             <div class="card-body">
                 <form method="POST" action="">
-                    <!-- Accounting Head -->
-                    <div class="form-group">
-                        <label>Accounting Head</label>
-                        <select name="head_id" id="head_id" class="form-select" required>
-                            <option value="">Select Head</option>
-                            <?php foreach($heads as $head): ?>
-                                <option value="<?php echo $head['id']; ?>">
-                                    <?php 
-                                    $type = '';
-                                    switch($head['name']) {
-                                        case 'Assets':
-                                           
-                                            break;
-                                        case 'Liabilities':
-                                           
-                                            break;
-                                        case 'Equities':
-                                          
-                                            break;
-                                        case 'Income':
-                                           
-                                            break;
-                                        case 'Expenses':
-                                           
-                                            break;
-                                    }
-                                    echo htmlspecialchars($head['name']) . ' ' . $type; 
-                                    ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                    <!-- Debit Section -->
+                    <div class="row mb-4">
+                        <h5>Debit Entry</h5>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>Accounting Head</label>
+                                <select name="debit_head_id" id="debit_head_id" class="form-select" required>
+                                    <option value="">Select Head</option>
+                                    <?php foreach($heads as $head): ?>
+                                        <option value="<?php echo $head['id']; ?>">
+                                            <?php echo htmlspecialchars($head['name']); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">    
+                                <label>Category</label>
+                                <select name="debit_category_id" id="debit_category_id" class="form-select" required>
+                                    <option value="">Select Head First</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>Amount</label>
+                                <input type="number" name="debit_amount" class="form-control" step="0.01" required>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Amount -->
-                    <div class="form-group">
-                        <label>Amount</label>
-                        <input type="number" name="amount" class="form-control" step="0.01" required>
+                    <!-- Credit Section -->
+                    <div class="row mb-4">
+                        <h5>Credit Entry</h5>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>Accounting Head</label>
+                                <select name="credit_head_id" id="credit_head_id" class="form-select" required>
+                                    <option value="">Select Head</option>
+                                    <?php foreach($heads as $head): ?>
+                                        <option value="<?php echo $head['id']; ?>">
+                                            <?php echo htmlspecialchars($head['name']); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">    
+                                <label>Category</label>
+                                <select name="credit_category_id" id="credit_category_id" class="form-select" required>
+                                    <option value="">Select Head First</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>Amount</label>
+                                <input type="number" name="credit_amount" class="form-control" step="0.01" required>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Category -->
-                    <div class="form-group">    
-                        <label>Category</label>
-                        <select name="category_id" id="category_id" class="form-select" required>
-                            <option value="">Select Head First</option>
-                        </select>
-                    </div>
-
-                    <!-- Date -->
-                    <div class="form-group">
-                        <label>Date</label>
-                        <input type="date" name="date" class="form-control" required value="<?php echo date('Y-m-d'); ?>">
-                    </div>
-
-                    <!-- Description -->
-                    <div class="form-group">
-                        <label>Description</label>
-                        <textarea name="description" class="form-control" rows="4"></textarea>
+                    <!-- Common Fields -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Date</label>
+                                <input type="date" name="date" class="form-control" required value="<?php echo date('Y-m-d'); ?>">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Description</label>
+                                <textarea name="description" class="form-control" rows="4"></textarea>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Buttons -->
-                    <div class="text-end">
+                    <div class="text-end mt-3">
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-save"></i> Save Transaction
                         </button>
@@ -305,21 +263,37 @@ function generateLedgerCode($head_id, $conn) {
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
         $(document).ready(function() {
-            // When accounting head changes
-            $('#head_id').change(function() {~
+            // When debit accounting head changes
+            $('#debit_head_id').change(function() {
                 var head_id = $(this).val();
-                
                 if (head_id) {
                     $.ajax({
                         url: 'get_categories.php',
                         type: 'GET',
                         data: { head_id: head_id },
                         success: function(response) {
-                            $('#category_id').html(response);
+                            $('#debit_category_id').html(response);
                         }
                     });
                 } else {
-                    $('#category_id').html('<option value="">Select Head First</option>');
+                    $('#debit_category_id').html('<option value="">Select Head First</option>');
+                }
+            });
+
+            // When credit accounting head changes
+            $('#credit_head_id').change(function() {
+                var head_id = $(this).val();
+                if (head_id) {
+                    $.ajax({
+                        url: 'get_categories.php',
+                        type: 'GET',
+                        data: { head_id: head_id },
+                        success: function(response) {
+                            $('#credit_category_id').html(response);
+                        }
+                    });
+                } else {
+                    $('#credit_category_id').html('<option value="">Select Head First</option>');
                 }
             });
         });

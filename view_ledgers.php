@@ -3,74 +3,65 @@ require_once 'session.php';
 require_once 'db.php';
 require_once 'functions.php';
 
-
-// Calculate totals from all transactions
+// Calculate totals from transactions
 $totals_query = "SELECT 
-    SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as total_income,
-    SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as total_expense
-    FROM transactions";
+    SUM(debit) as total_debit,
+    SUM(credit) as total_credit,
+    (SUM(debit) - SUM(credit)) as net_balance
+    FROM ledgers";
 $totals_result = $conn->query($totals_query);
 $totals = $totals_result->fetch_assoc();
 
-$total_income = $totals['total_income'] ?? 0;
-$total_expense = $totals['total_expense'] ?? 0;
-$net_balance = $total_income - $total_expense;
+$total_debit = $totals['total_debit'] ?? 0;
+$total_credit = $totals['total_credit'] ?? 0;
+$net_balance = $totals['net_balance'] ?? 0;
 
-// Fetch ledger entries with transaction details
-$where_conditions = [];
-$params = [];
-$param_types = '';
-// Add filter form before the main table
-?>
-
-
-<?php
-// Update the main query with filters
-$query = "SELECT DISTINCT
+// Main query for ledger entries
+$query = "SELECT 
     l.ledger_code,
     l.date,
     ah.name as account_type,
     l.description,
     l.debit,
     l.credit,
-    l.balance
+    l.balance,
+    t.type as transaction_type
     FROM ledgers l
     LEFT JOIN transactions t ON l.transaction_id = t.id
     LEFT JOIN accounting_heads ah ON t.head_id = ah.id
-    WHERE l.ledger_code IS NOT NULL";
+    WHERE 1=1";
 
-// Add date range filter
+// Add filters if provided
 if (!empty($_GET['from_date'])) {
     $query .= " AND l.date >= '" . $conn->real_escape_string($_GET['from_date']) . "'";
 }
 if (!empty($_GET['to_date'])) {
     $query .= " AND l.date <= '" . $conn->real_escape_string($_GET['to_date']) . "'";
 }
-
-// Add ledger code range filter
 if (!empty($_GET['from_code'])) {
     $query .= " AND l.ledger_code >= '" . $conn->real_escape_string($_GET['from_code']) . "'";
 }
 if (!empty($_GET['to_code'])) {
     $query .= " AND l.ledger_code <= '" . $conn->real_escape_string($_GET['to_code']) . "'";
 }
-
-// Add Account Type Filter here
 if (!empty($_GET['account_type'])) {
     $query .= " AND ah.name = '" . $conn->real_escape_string($_GET['account_type']) . "'";
 }
+if (!empty($_GET['search_term'])) {
+    $search = $conn->real_escape_string($_GET['search_term']);
+    $query .= " AND (
+        l.ledger_code LIKE '%$search%' OR 
+        l.description LIKE '%$search%' OR 
+        ah.name LIKE '%$search%'
+    )";
+}
 
 $query .= " ORDER BY l.date DESC, l.id DESC";
-
 $result = $conn->query($query);
 
 if (!$result) {
     die("Error fetching ledger entries: " . $conn->error);
 }
-
-// Rest of your existing HTML code remains the same until the table body...
-
-// Update the table body section with:
 ?>
 
 <!DOCTYPE html>
@@ -332,8 +323,8 @@ if (!empty($_GET['search_term'])) {
                     <div class="stats-icon debit-icon">
                         <i class="fas fa-arrow-up"></i>
                     </div>
-                    <div class="stats-value"><?php echo formatCurrency($total_income); ?></div>
-                    <div class="stats-label">Total Income</div>
+                    <div class="stats-value"><?php echo formatCurrency($total_debit); ?></div>
+                    <div class="stats-label">Total Debit</div>
                 </div>
             </div>
             <div class="col-md-4">
@@ -341,8 +332,8 @@ if (!empty($_GET['search_term'])) {
                     <div class="stats-icon credit-icon">
                         <i class="fas fa-arrow-down"></i>
                     </div>
-                    <div class="stats-value"><?php echo formatCurrency($total_expense); ?></div>
-                    <div class="stats-label">Total Expense</div>
+                    <div class="stats-value"><?php echo formatCurrency($total_credit); ?></div>
+                    <div class="stats-label">Total Credit</div>
                 </div>
             </div>
             <div class="col-md-4">
@@ -374,24 +365,22 @@ if (!empty($_GET['search_term'])) {
                     <tbody>
                         <?php while($row = $result->fetch_assoc()): ?>
                             <tr>
-                                <td><?php echo htmlspecialchars($row['ledger_code'] ?? 'N/A'); ?></td>
-                                <td><?php echo date('d M Y H:i', strtotime($row['date'])); ?></td>
+                                <td><?php echo htmlspecialchars($row['ledger_code']); ?></td>
+                                <td><?php echo date('d M Y', strtotime($row['date'])); ?></td>
                                 <td><?php echo htmlspecialchars($row['account_type']); ?></td>
                                 <td><?php echo htmlspecialchars($row['description']); ?></td>
-                                <td class="text-end"><?php echo $row['debit'] ? 'PKR ' . number_format($row['debit'], 2) : '-'; ?></td>
-                                <td class="text-end"><?php echo $row['credit'] ? 'PKR ' . number_format($row['credit'], 2) : '-'; ?></td>
-                                <td class="text-end">PKR <?php echo number_format($row['balance'], 2); ?></td>
+                                <td class="text-end"><?php echo $row['debit'] > 0 ? formatCurrency($row['debit']) : '-'; ?></td>
+                                <td class="text-end"><?php echo $row['credit'] > 0 ? formatCurrency($row['credit']) : '-'; ?></td>
+                                <td class="text-end"><?php echo formatCurrency($row['balance']); ?></td>
                             </tr>
                         <?php endwhile; ?>
                     </tbody>
                     <tfoot class="table-light">
                         <tr class="fw-bold">
-                            <td colspan="3">Total Balance</td>
-                            <td class="text-end"><?php echo formatCurrency($total_income); ?></td>
-                            <td class="text-end"><?php echo formatCurrency($total_expense); ?></td>
-                            <td class="text-end <?php echo $net_balance >= 0 ? 'amount-positive' : 'amount-negative'; ?>">
-                                <?php echo formatCurrency($net_balance); ?>
-                            </td>
+                            <td colspan="4">TOTAL</td>
+                            <td class="text-end"><?php echo formatCurrency($total_debit); ?></td>
+                            <td class="text-end"><?php echo formatCurrency($total_credit); ?></td>
+                            <td class="text-end"><?php echo formatCurrency($net_balance); ?></td>
                         </tr>
                     </tfoot>
                 </table>
